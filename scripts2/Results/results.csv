@@ -1,0 +1,49 @@
+Query, Result
+E<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Satisfied
+A<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Not Satisfied
+E<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Satisfied
+A<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Not Satisfied
+E<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Satisfied
+A<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Not Satisfied
+E<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Satisfied
+A<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 45)), Not Satisfied
+E<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Satisfied
+A<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Not Satisfied
+E<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Satisfied
+A<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Not Satisfied
+E<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Satisfied
+A<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Not Satisfied
+E<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Satisfied
+A<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 50)), Not Satisfied
+E<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Satisfied
+A<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Not Satisfied
+E<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Satisfied
+A<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Not Satisfied
+E<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Satisfied
+A<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Not Satisfied
+E<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Satisfied
+A<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 55)), Not Satisfied
+E<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Satisfied
+A<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Not Satisfied
+E<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Satisfied
+A<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Not Satisfied
+E<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Satisfied
+A<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Not Satisfied
+E<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Satisfied
+A<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 60)), Not Satisfied
+E<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Satisfied
+A<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Not Satisfied
+E<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Satisfied
+A<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Not Satisfied
+E<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Satisfied
+A<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Not Satisfied
+E<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Satisfied
+A<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 65)), Not Satisfied
+E<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Satisfied
+A<>(global <= 70 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Not Satisfied
+E<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Satisfied
+A<>(global <= 80 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Not Satisfied
+E<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Satisfied
+A<>(global <= 90 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Not Satisfied
+E<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Satisfied
+A<>(global <= 100 and (rescued_civilians * 100 / CIVILIAN_NUMBER >= 70)), Not Satisfied

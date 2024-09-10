@@ -1,0 +1,718 @@
+<?xml version='1.0' encoding='utf-8'?>
+<nta>
+<declaration>// Place global declarations here.
+
+// Broadcast Channels
+broadcast chan Initialized;
+clock global;
+
+// Structs
+typedef struct {
+    int row;
+    int col;
+} position_t;
+
+typedef struct {
+    int d; //direction
+    position_t p; //position
+} direction_t;
+
+// Parameters
+const int GRID_WIDTH = 10;// 10;// 10;                   // Grid's width
+const int GRID_HEIGHT = 10;// 10;// 10;                   // Grid's width    
+const int FIRE_NUM = 8;// 13;// 6;                       // number of exists.
+const int EXIT_NUM = 2;// 4;// 4;                       // number of exists.
+const int CIVILIAN_NUMBER = 5;// 6;// 5;               // Number of civilians
+const int FIRST_RESPONDER_NUMBER = 2;// 3;// 1;         // Number of first responders
+const int DRONE_NUM = 1;// 4;// 4;                      // Number of drones
+const int STEP_TIME = 1;                      // How many time units (tu) is a step worth
+const int Nv[DRONE_NUM] = {2};// {10,10,10,10};// {1,2,1,2};                            //Sight range of drones. (can detect a civilian or a needy civilian if in Nv range).
+const int Tscs = 100;// 100;// 100;
+const int N = 40;// 100;// 100;
+const int EXP_RATE = 2;
+const int Pfail = 20;    //probability in percentage that the sensor fails to detect a civilian and a needy civilian
+const int Plisten = 80;    //probability in percentage that the civilian will listen to the drones instructions
+// Constants
+const int PATH_LEN = 16;// 32;// 32;    //Len of the array containing the paths of the drones
+
+// Content type
+const int U = 4;    //Drone's next move is UP
+const int D = 1;    //Drone's next move is DOWN
+const int L = 2;    //Drone's next move is LEFT
+const int R = 3;    //Drone's next move is RIGHT
+const int CIVILIAN = 1;
+const int FIRE = 2;
+const int EXIT = 3;
+const int FIRST_RESPONDER = 4;
+const int NEEDY_CIV = 5;
+const int RESCUING = 6;
+const int RESCUING_ZR = 7;
+const int HELPING = 8;
+
+
+const int Tzr[CIVILIAN_NUMBER] = {2,2,2,2,2};// {2,2,2,2,2,2};// {2,1,1,1,1};
+const int Tv[CIVILIAN_NUMBER] = {2,2,2,2,2};// {300,300,400,500,300,200};// {3,4,3,2,2};
+const int Tfrs[FIRST_RESPONDER_NUMBER] = {1,1};// {1,1,1};// {6}; //Each FR's own Tfr (= Time_first_responder). Configurable.
+
+typedef int[0, CIVILIAN_NUMBER-1] civilian_t;
+typedef int[0, FIRST_RESPONDER_NUMBER -1] firstResponder_t;
+typedef int[0, DRONE_NUM - 1] drone_t;
+
+// Special Channels
+broadcast chan Civilian_Saved[CIVILIAN_NUMBER];
+broadcast chan go_help[CIVILIAN_NUMBER];    //used by the drone to instruct civilian to help (tells him which civilian to help)
+broadcast chan go_call_fr[CIVILIAN_NUMBER];    // Used by drone to instruct civilian to seek first responder's assistance (tells him which fr to call)
+broadcast chan summon_fr[FIRST_RESPONDER_NUMBER];  //Used from civilians to notice a fr he's been requested to go help a needy civilian
+broadcast chan been_summoned[CIVILIAN_NUMBER];
+
+// Outcomes of the simulation
+int casualties = 0;    //Numbcer of dead civilians.
+int rescued_civilians = 0;
+int zr_not_listened = 0;
+int fr_not_listened = 0;
+
+
+
+// Data structures---------------------------------------
+int grid[GRID_HEIGHT][GRID_WIDTH];
+meta int path[GRID_HEIGHT][GRID_WIDTH];
+
+const position_t fires_positions[FIRE_NUM] = { {0,3}, {1,3}, {2,3}, {3,3}, {4,3}, {5,3}, {6,3}, {7,3} };// { {3,3}, {4,3}, {4,4}, {5,4}, {5,5}, {4,5}, {5,6}, {6,6}, {6,4}, {3,5}, {3,6}, {6,5}, {7,6} };// {{3,3}, {3,4}, {3,5}, {3,6}, {4,3}, {4,4}};
+
+const position_t exits_positions[EXIT_NUM] = { {4,0}, {3,0} };// { {0,7}, {0,2}, {9,7}, {9,2} };// {{0,2},{0,3},{GRID_WIDTH-1, 2}, {GRID_WIDTH-1, 3}};
+
+const position_t drones_positions[DRONE_NUM] = {{4,2}};// {{1,1}, {1,6}, {6,6}, {6,3}};// {{2,1},{1, GRID_WIDTH-3},{GRID_HEIGHT-4, GRID_WIDTH-4}, {GRID_HEIGHT-4, 1}};
+const direction_t drones_path[PATH_LEN] = {{U,{4,2}}, {U,{3,2}}, {R,{2,2}}, {R,{2,3}}, {R,{2,4}}, {R,{2,5}}, {D,{2,6}}, {D,{3,6}}, {D,{4,6}}, {D,{5,6}}, {L,{6,6}}, {L,{6,5}}, {L,{6,4}}, {L,{6,3}}, {U,{6,2}}, {U,{5,2}}};// {{D,{1,1}}, {D,{2,1}}, {R,{3,1}}, {R,{3,2}}, {U,{3,3}}, {U,{2,3}}, {L,{1,3}}, {L,{1,2}}, {D,{1,6}}, {D,{2,6}}, {R,{3,6}}, {R,{3,7}}, {U,{3,8}}, {U,{2,8}}, {L,{1,8}}, {L,{1,7}}, {D,{6,6}}, {D,{7,6}}, {R,{8,6}}, {R,{8,7}}, {U,{8,8}}, {U,{7,8}}, {L,{6,8}}, {L,{6,7}}, {D,{6,3}}, {D,{7,3}}, {L,{8,3}}, {L,{8,2}}, {U,{8,1}}, {U,{7,1}}, {R,{6,1}}, {R,{6,2}}};// {{R,{1,1}},{R,{1,2}},{D,{1,3}},{D,{2,3}},{L,{3,3}},{L,{3,2}},{U,{3,1}},{U,{2,1}},{R,{1,1+5}},{R,{1,2+5}},{D,{1,3+5}},{D,{2,3+5}},{L,{3,3+5}},{L,{3,2+5}},{U,{3,1+5}},{U,{2,1+5}}, {R,{1+5,1}},{R,{1+5,2}},{D,{1+5,3}},{D,{2+5,3}},{L,{3+5,3}},{L,{3+5,2}},{U,{3+5,1}},{U,{2+5,1}}, {R,{1+5,1+5}},{R,{1+5,2+5}},{D,{1+5,3+5}},{D,{2+5,3+5}},{L,{3+5,3+5}},{L,{3+5,2+5}},{U,{3+5,1+5}},{U,{2+5,1+5}}};
+position_t firstResponder_positions[FIRST_RESPONDER_NUMBER] = { {7,7}, {8,1} };// { {1,8}, {7,8}, {7,1} };// {{6,6}};// = {  {3,7},{5,5},{7,2}  };    //positions of FRs
+position_t civilians_positions[CIVILIAN_NUMBER] = { {1,8}, {2,8}, {3,8}, {3,7}, {9,9} };// { {4,8}, {8,9}, {8,3}, {1,2}, {5,1}, {2,5} };// {  {1,1},{4,7},{2,1},{7,3},{8,3}  };                //positions of civ.s
+int go_save[CIVILIAN_NUMBER]; //in each position we have the id of the civilian to save.
+int zr_distances[CIVILIAN_NUMBER];    //in each position we have the distance that the zero responder has to wait in order to save the assigned civilian
+int civ2fr_distances[CIVILIAN_NUMBER];    //distances from each civilian to the fr that civilian has to summon (NOTES: can be 0; doesn't have to be as long as the no. of FRs)
+int fr2needy_distances[CIVILIAN_NUMBER];    //Similar to the above. It has to be as big as the no. of civilians because no more (and possibly no less) than CIVILIAN_NUMBER civilians can be told to summon FRs
+
+int go_call[CIVILIAN_NUMBER];    //Similarly to others above, it is indexed by civilian to "tell" each civilian which fr to summon. Used alongside the omonimous channel.
+int summoner[FIRST_RESPONDER_NUMBER];     //Meant for FRs to know the civilian who summoned them
+
+
+// Methods
+void setFire(){    //Place fire
+    int k=0;
+    for(k=0; k&lt;FIRE_NUM;k++){
+        grid[fires_positions[k].row][fires_positions[k].col] = FIRE;
+    }
+
+}
+
+void setExits(){    //Place exits
+    int k=0;
+    for(k=0; k&lt;EXIT_NUM;k++){
+        grid[exits_positions[k].row][exits_positions[k].col] = EXIT;
+    }
+}
+
+
+void setDronesPath(){    //design drones' path(s)
+    int k=0;
+    for(k=0; k&lt;PATH_LEN;k++){
+        path[drones_path[k].p.row][drones_path[k].p.col] = drones_path[k].d;
+    }
+}
+
+int dist(position_t a, position_t b){
+    return (abs(a.row-b.row)+abs(a.col-b.col));
+    
+
+}
+
+
+int getPath(position_t pos){
+    return path[pos.row][pos.col];
+}
+</declaration><template><name>Civilian</name><parameter>const civilian_t id</parameter><declaration>clock x;
+const int local_Tzr = Tzr[id];
+const int local_Tv = Tv[id];
+int local_Tfr = 0;
+
+
+
+bool isNextToFire(){
+    position_t pos = civilians_positions[id];
+    int start_row, start_col;
+    int end_row, end_col;
+    int i=0;
+    int j=0;
+
+    start_row = pos.row &gt; 0 ? pos.row-1 : pos.row;
+    end_row = pos.row &lt; GRID_HEIGHT-1 ? pos.row+1 : pos.row;
+
+    start_col = pos.col &gt; 0 ? pos.col-1 : pos.col;
+    end_col = pos.col &lt; GRID_WIDTH-1 ? pos.col+1 : pos.col;
+    
+    
+    for(i=start_row;i&lt;=end_row; i++){
+        for(j=start_col;j&lt;=end_col;j++){
+            if( !(i == pos.row &amp;&amp; j == pos.col) &amp;&amp; grid[i][j]==FIRE ){
+                return true;
+            }
+        }
+    }
+    return false;
+
+}
+
+bool isNextToExit(){
+    position_t pos = civilians_positions[id];
+    int start_row, start_col;
+    int end_row, end_col;
+    int i=0;
+    int j=0;
+
+    start_row = pos.row &gt; 0 ? pos.row-1 : pos.row;
+    end_row = pos.row &lt; GRID_HEIGHT-1 ? pos.row+1 : pos.row;
+
+    start_col = pos.col &gt; 0 ? pos.col-1 : pos.col;
+    end_col = pos.col &lt; GRID_WIDTH-1 ? pos.col+1 : pos.col;
+    
+    
+    for(i=start_row;i&lt;=end_row; i++){
+        for(j=start_col;j&lt;=end_col;j++){
+            if( !(i == pos.row &amp;&amp; j == pos.col) &amp;&amp; grid[i][j]==EXIT ){
+                return true;
+            }
+        }
+    }
+    return false;
+
+}
+
+bool isCloserToExit(int new){
+    position_t old_pos = civilians_positions[id];
+    position_t pos = civilians_positions[id];
+    position_t closest_exit;
+    int i;
+
+    closest_exit = exits_positions[0];
+
+    for(i = 1; i&lt; EXIT_NUM;i++){
+        if(dist(pos,exits_positions[i]) &lt; dist(pos,closest_exit)){
+            closest_exit = exits_positions[i];
+        }
+    }
+    if(new == U){
+        pos.row--;
+    }else if (new == D){
+        pos.row++;
+    }else if (new == R){
+        pos.col++;
+    }else if (new == L){
+        pos.col--;
+    }
+
+    return (dist(old_pos,closest_exit)&gt;dist(pos,closest_exit));
+
+}
+
+void reachNeedy(){
+    grid[civilians_positions[go_save[id]].row][civilians_positions[go_save[id]].col] = RESCUING_ZR;
+}
+
+void resetNeedy(){
+    //data updated in any case
+    grid[civilians_positions[go_save[id]].row][civilians_positions[go_save[id]].col] = NEEDY_CIV;
+    grid[civilians_positions[id].row][civilians_positions[id].col] = CIVILIAN;
+    go_save[id] = 0;
+    //data updated if zero responder
+    zr_distances[id] = 0;
+    //data updated if first responder
+    civ2fr_distances[id] = 0;
+    fr2needy_distances[0] = 0;
+    go_call[id] = 0;
+    //summoner[fr_id] = civ_id; This is updated in this way by the drone. Leave it like that, shouldn't be a problem
+}
+
+bool CanGoRight(){
+    position_t pos = civilians_positions[id];
+    return ((pos.col &lt; GRID_WIDTH-1) &amp;&amp; grid[pos.row][pos.col + 1]==0 &amp;&amp; isCloserToExit(R));
+}
+
+bool CanGoLeft(){
+    position_t pos = civilians_positions[id];
+    return ((pos.col &gt; 0) &amp;&amp; grid[pos.row][pos.col - 1]==0 &amp;&amp; isCloserToExit(L));
+}
+
+bool CanGoUp(){
+    position_t pos = civilians_positions[id];
+    return ((pos.row &gt; 0) &amp;&amp; grid[pos.row - 1][pos.col]==0 &amp;&amp; isCloserToExit(U));
+}
+
+bool CanGoDown(){
+    position_t pos = civilians_positions[id];
+    return ((pos.row &lt; GRID_HEIGHT-1) &amp;&amp; grid[pos.row + 1][pos.col]==0 &amp;&amp; isCloserToExit(D));
+}
+ 
+bool CantMove(){
+    return (!(CanGoRight() || CanGoLeft() || CanGoUp() || CanGoDown()));
+}
+
+void ExitGrid(){
+    position_t pos = civilians_positions[id];
+    if(grid[pos.row][pos.col] != RESCUING){
+        grid[pos.row][pos.col] = 0;
+    }
+    civilians_positions[id].row=-1;
+    civilians_positions[id].col=-1;
+    go_save[id] = 0;
+    zr_distances[id] = 0;
+    civ2fr_distances[id] = 0;
+    go_call[id] = 0;
+
+    
+}
+
+void Become_Needy(){
+    position_t pos = civilians_positions[id];
+    grid[pos.row][pos.col] = NEEDY_CIV;
+}
+
+void Move_Right(){
+    position_t pos = civilians_positions[id];
+    grid[pos.row][pos.col] = 0;
+    pos.col++;
+    grid[pos.row][pos.col] = CIVILIAN;
+    civilians_positions[id].col++;
+}
+
+void Move_Left(){
+    position_t pos = civilians_positions[id];
+    grid[pos.row][pos.col] = 0;
+    pos.col--;
+    grid[pos.row][pos.col] = CIVILIAN;
+    civilians_positions[id].col--;
+}
+
+void Move_Up(){
+    position_t pos = civilians_positions[id];
+    grid[pos.row][pos.col] = 0;
+    pos.row--;
+    grid[pos.row][pos.col] = CIVILIAN;
+    civilians_positions[id].row--;
+}
+
+void Move_Down(){
+    position_t pos = civilians_positions[id];
+    grid[pos.row][pos.col] = 0;
+    pos.row++;
+    grid[pos.row][pos.col] = CIVILIAN;
+    civilians_positions[id].row++;
+}
+
+void setLocal_Tfr(int Tfr){
+    local_Tfr = Tfr;
+}
+</declaration><location id="id0" x="-1198" y="-1172" /><location id="id1" x="-1198" y="-578"><name x="-1223" y="-613">Active</name><label kind="invariant" x="-1164" y="-613">x &lt;= STEP_TIME</label></location><location id="id2" x="-1997" y="-544"><name x="-2023" y="-527">Exited</name></location><location id="id3" x="-1589" y="-544"><name x="-1640" y="-578">Needy</name><label kind="invariant" x="-1640" y="-535">x &lt;= local_Tv</label></location><location id="id4" x="-1547" y="-348"><name x="-1657" y="-374">ZeroResponder</name><label kind="invariant" x="-1683" y="-331">x &lt;= (zr_distances[id] + local_Tzr)</label></location><location id="id5" x="-1190" y="-306"><name x="-1182" y="-340">SeekHelp</name><label kind="invariant" x="-1300" y="-289">x &lt;= civ2fr_distances[id]</label></location><location id="id6" x="-1198" y="-807"><committed /></location><location id="id7" x="-1479" y="-238" /><branchpoint id="id8" x="-1198" y="-578"> </branchpoint><init ref="id0" /><transition><source ref="id1" /><target ref="id5" /><label kind="synchronisation" x="-1190" y="-416">go_call_fr[id]?</label><label kind="assignment" x="-1190" y="-391">x=0,
+setLocal_Tfr(Tfrs[go_call[id]])</label></transition><transition><source ref="id1" /><target ref="id4" /><label kind="synchronisation" x="-1377" y="-442">go_help[id]?</label><label kind="assignment" x="-1368" y="-425">x=0,
+reachNeedy()</label><nail x="-1360" y="-348" /></transition><transition><source ref="id1" /><target ref="id6" /><label kind="guard" x="-722" y="-467">CantMove() &amp;&amp; x &gt;= STEP_TIME</label><nail x="-1198" y="-450" /><nail x="-476" y="-450" /><nail x="-476" y="-807" /></transition><transition><source ref="id4" /><target ref="id2" /><label kind="guard" x="-1938" y="-484">civilians_positions[go_save[id]].row ==-1</label><label kind="assignment" x="-1938" y="-459">ExitGrid(), rescued_civilians++</label><nail x="-1547" y="-459" /><nail x="-1963" y="-459" /></transition><transition><source ref="id0" /><target ref="id6" /><label kind="synchronisation" x="-1190" y="-1062">Initialized?</label><nail x="-1198" y="-892" /></transition><transition><source ref="id5" /><target ref="id7" /><label kind="guard" x="-1445" y="-238">x &gt;= civ2fr_distances[id]</label><label kind="synchronisation" x="-1428" y="-221">summon_fr[go_call[id]]!</label><nail x="-1190" y="-238" /></transition><transition><source ref="id6" /><target ref="id1" /><label kind="guard" x="-1190" y="-747">!isNextToFire() &amp;&amp; !isNextToExit()</label><label kind="assignment" x="-1190" y="-688">x = 0</label></transition><transition><source ref="id7" /><target ref="id2" /><label kind="synchronisation" x="-1836" y="-263">been_summoned[id]?</label><label kind="assignment" x="-1878" y="-229">ExitGrid(), rescued_civilians++</label><nail x="-1547" y="-238" /><nail x="-2082" y="-238" /><nail x="-2082" y="-493" /></transition><transition><source ref="id4" /><target ref="id2" /><label kind="guard" x="-1963" y="-365">x &gt;= (zr_distances[id] + local_Tzr)</label><label kind="synchronisation" x="-1963" y="-382">Civilian_Saved[go_save[id]]!</label><label kind="assignment" x="-1972" y="-348">ExitGrid(), rescued_civilians++</label><nail x="-1980" y="-348" /><nail x="-1980" y="-450" /></transition><transition><source ref="id3" /><target ref="id2" /><label kind="synchronisation" x="-1844" y="-705">Civilian_Saved[id]?</label><label kind="assignment" x="-1895" y="-671">ExitGrid(), rescued_civilians++</label><nail x="-1589" y="-680" /><nail x="-1946" y="-680" /></transition><transition><source ref="id1" /><target ref="id6" /><label kind="guard" x="-1156" y="-501">CanGoUp() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="-892" y="-501">Move_Up()</label><nail x="-1181" y="-484" /><nail x="-535" y="-484" /><nail x="-535" y="-807" /></transition><transition><source ref="id1" /><target ref="id6" /><label kind="guard" x="-1164" y="-526">CanGoDown() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="-901" y="-526">Move_Down()</label><nail x="-1164" y="-509" /><nail x="-637" y="-509" /><nail x="-637" y="-807" /></transition><transition><source ref="id1" /><target ref="id6" /><label kind="guard" x="-918" y="-560">CanGoLeft() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="-1011" y="-560">Move_Left()</label><nail x="-1079" y="-535" /><nail x="-654" y="-535" /><nail x="-654" y="-807" /><nail x="-1122" y="-807" /></transition><transition><source ref="id1" /><target ref="id6" /><label kind="guard" x="-1096" y="-824">CanGoRight() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="-1096" y="-841">Move_Right()</label><nail x="-773" y="-569" /><nail x="-773" y="-807" /></transition><transition><source ref="id3" /><target ref="id2" /><label kind="guard" x="-1853" y="-569">x &gt;= local_Tv</label><label kind="assignment" x="-1904" y="-544">ExitGrid(), casualties++</label><nail x="-1810" y="-544" /></transition><transition><source ref="id6" /><target ref="id3" /><label kind="guard" x="-1513" y="-612">isNextToFire() &amp;&amp; !isNextToExit()</label><label kind="assignment" x="-1513" y="-586">Become_Needy(),
+x = 0</label><nail x="-1232" y="-756" /><nail x="-1232" y="-586" /><nail x="-1513" y="-586" /></transition><transition><source ref="id6" /><target ref="id2" /><label kind="guard" x="-1555" y="-832">isNextToExit()</label><label kind="assignment" x="-1598" y="-799">ExitGrid(), rescued_civilians++</label><nail x="-1997" y="-807" /></transition></template><template><name>Drone</name><parameter>const drone_t id</parameter><declaration>clock x;
+position_t position;
+int needy_id;
+int civ_id;    //id of the civilian near the drone
+bool found_pair = false;
+const int local_Nv = Nv[id];
+
+
+
+//what if in the area of sight of the drone there are multiple civilians?
+
+void moveDrone(){ //Moves the drone according to the path configured in the global declarations
+    int next;
+
+    next = getPath(position);
+    if(next == U){
+        position.row--;
+    }
+    else if(next == D){
+        position.row++;
+    }
+    else if(next == L){
+        position.col--;
+    }
+    else if(next == R){
+        position.col++; 
+    }
+
+    return;
+}
+
+void resetValues() {
+    grid[civilians_positions[needy_id].row][civilians_positions[needy_id].col] = NEEDY_CIV;
+    grid[civilians_positions[civ_id].row][civilians_positions[civ_id].col] = CIVILIAN;
+}
+
+//this function is called every time a drone moves. It checks the surroundings and if
+//it finds any civilian of needy civilian will set some variables that will later be used
+//by the TA to find the right civilian to give instructions to.
+void checkPosition(){
+    int needy_row;
+	int needy_col;
+	int civ_row;
+	int civ_col;
+    int start_row, start_col;
+    int end_row, end_col;
+    bool isNextToNeedy = false;
+    bool isNextToCivilian = false;
+    int i = 0;
+    int j = 0;
+    int k = 0;
+    
+    //define surrounding area
+    start_row = position.row &gt; local_Nv ? position.row-local_Nv : 0;
+    end_row = position.row &lt; GRID_HEIGHT-local_Nv ? position.row+local_Nv : GRID_HEIGHT-1;
+
+    start_col = position.col &gt; local_Nv ? position.col-local_Nv : 0;
+    end_col = position.col &lt; GRID_WIDTH-local_Nv ? position.col+local_Nv : GRID_WIDTH-1;
+    
+    //scan surrounding area
+    for(i=start_row;i&lt;=end_row &amp;&amp; !(isNextToNeedy &amp;&amp; isNextToCivilian); i++){
+        for(j=start_col;j&lt;=end_col &amp;&amp; !(isNextToNeedy &amp;&amp; isNextToCivilian);j++){
+            if( !(i == position.row &amp;&amp; j == position.col) ){
+                if(grid[i][j]==NEEDY_CIV &amp;&amp; !isNextToNeedy){
+                    isNextToNeedy = true;
+                    for(k = 0; k &lt; CIVILIAN_NUMBER; k++){
+                        if(civilians_positions[k].row == i &amp;&amp; civilians_positions[k].col == j){
+                            needy_id = k;
+                            needy_row = civilians_positions[needy_id].row;
+	                        needy_col = civilians_positions[needy_id].col;
+                        }
+                    }
+                }
+                if(grid[i][j]==CIVILIAN &amp;&amp; !isNextToCivilian){
+                    isNextToCivilian = true;
+                    for(k = 0; k &lt; CIVILIAN_NUMBER; k++){
+                        if(civilians_positions[k].row == i &amp;&amp; civilians_positions[k].col == j){
+                            civ_id = k;
+                            civ_row = civilians_positions[civ_id].row;
+	                        civ_col = civilians_positions[civ_id].col;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if(isNextToNeedy &amp;&amp; isNextToCivilian){
+        found_pair = true;
+        grid[needy_row][needy_col] = RESCUING; //This avoid other drones to find the same needy civilian
+        grid[civ_row][civ_col] = HELPING;
+    }else{
+        found_pair = false;
+    }
+}
+
+bool fr_in_between(){
+
+    int civ_row = civilians_positions[civ_id].row;
+	int civ_col = civilians_positions[civ_id].col;
+    int needy_row = civilians_positions[needy_id].row;
+	int needy_col = civilians_positions[needy_id].col;
+    int min_row = needy_row &gt;= civ_row ? civ_row : needy_row;
+	int max_row = needy_row &lt;= civ_row ? civ_row : needy_row;
+	int min_col = needy_col &gt;= civ_col ? civ_col : needy_col;
+	int max_col = needy_col &lt;= civ_col ? civ_col : needy_col;
+
+    int i;
+
+    for(i=0;i&lt;FIRST_RESPONDER_NUMBER;i++){
+        if(firstResponder_positions[i].row &gt;= min_row &amp;&amp; firstResponder_positions[i].row &lt;= max_row &amp;&amp; firstResponder_positions[i].col &gt;= min_col &amp;&amp; firstResponder_positions[i].col &lt;= max_col){
+            return true;
+        }
+    }
+        
+    return false;
+
+}
+
+void calculate_Path(){        //This method determines the Manhattan distance between the civilian instructed to help and the needy one (they belong to the "found_pair")
+	int civ_row = civilians_positions[civ_id].row;
+	int civ_col = civilians_positions[civ_id].col;
+    int needy_row = civilians_positions[needy_id].row;
+	int needy_col = civilians_positions[needy_id].col;
+    int min_row = needy_row &gt;= civ_row ? civ_row : needy_row;
+	int max_row = needy_row &lt;= civ_row ? civ_row : needy_row;
+	int min_col = needy_col &gt;= civ_col ? civ_col : needy_col;
+	int max_col = needy_col &lt;= civ_col ? civ_col : needy_col;
+	
+	zr_distances[civ_id] = abs(max_row - min_row) + abs(max_col - min_row);
+	go_save[civ_id] = needy_id;
+}
+
+
+
+//This method determines the Manhattan distance between the civilian instructed to call a FR and that FR and the 
+//distance between the FR and the needy civ. They are stored in seprate data structures.
+void calculate_path_civ2fr(){    
+    int needy_row = civilians_positions[needy_id].row;
+    int needy_col = civilians_positions[needy_id].col;
+    int civ_row = civilians_positions[civ_id].row;
+	int civ_col = civilians_positions[civ_id].col;
+    int min_row, max_row, min_col, max_col;
+    int civ_to_fr, fr_to_needy;
+
+    position_t fr_pos;
+
+    // Look for first reposnders in progressively bigger circles around the needy civ.
+
+    int k, fr_id;
+
+
+
+    fr_id = 0;
+
+
+    for (k=1;k&lt;FIRST_RESPONDER_NUMBER;k++){
+        if(firstResponder_positions[fr_id].row == -1){
+            fr_id = k;
+        }
+        else if((abs(firstResponder_positions[k].row - civ_row)+abs(firstResponder_positions[k].col - civ_col)+abs(firstResponder_positions[k].row - needy_row)+abs(firstResponder_positions[k].col - needy_col))&lt;(abs(firstResponder_positions[fr_id].row - civ_row)+abs(firstResponder_positions[fr_id].col - civ_col) + abs(firstResponder_positions[fr_id].row - needy_row)+abs(firstResponder_positions[fr_id].col - needy_col))){
+            fr_id = k;
+        }
+    }
+
+    fr_pos.row = firstResponder_positions[fr_id].row;
+    fr_pos.col = firstResponder_positions[fr_id].col;
+
+
+    // Compute distances
+    
+
+    min_row = fr_pos.row &gt;= civ_row ? civ_row : fr_pos.row;
+	max_row = fr_pos.row &lt;= civ_row ? civ_row : fr_pos.row;
+	min_col = fr_pos.col &gt;= civ_col ? civ_col : fr_pos.col;
+	max_col = fr_pos.col &lt;= civ_col ? civ_col : fr_pos.col;
+
+    civ_to_fr = abs(max_row-min_row)+abs(max_col-min_col);
+
+    min_row = needy_row &gt;= fr_pos.row ? fr_pos.row : needy_row;
+	max_row = needy_row &lt;= fr_pos.row ? fr_pos.row : needy_row;
+	min_col = needy_col &gt;= fr_pos.col ? fr_pos.col : needy_col;
+	max_col = needy_col &lt;= fr_pos.col ? fr_pos.col : needy_col;
+
+    fr_to_needy = abs(max_row-min_row)+abs(max_col-min_col);
+
+    //distances[civ_id] = civ_to_fr + fr_to_needy;
+    civ2fr_distances[civ_id] = civ_to_fr;
+    fr2needy_distances[civ_id] = fr_to_needy;
+    go_save[civ_id] = needy_id;
+    go_call[civ_id] = fr_id;                    //Was "id", I guess it was wrong.
+    summoner[fr_id] = civ_id;
+}</declaration><location id="id26" x="-59" y="-42" /><location id="id27" x="-408" y="-187"><committed /></location><location id="id28" x="-59" y="-187"><committed /></location><location id="id29" x="-59" y="-297"><label kind="invariant" x="-144" y="-323">x&lt;=STEP_TIME</label></location><location id="id30" x="255" y="-535"><committed /></location><init ref="id26" /><transition><source ref="id30" /><target ref="id29" /><label kind="guard" x="17" y="-476">!fr_in_between()</label><label kind="synchronisation" x="17" y="-450">go_help[civ_id]!</label><label kind="assignment" x="8" y="-433">calculate_Path(),
+x=0</label><nail x="187" y="-450" /><nail x="-17" y="-450" /></transition><transition><source ref="id28" /><target ref="id30" /><label kind="guard" x="68" y="-204">found_pair</label><nail x="255" y="-187" /></transition><transition><source ref="id30" /><target ref="id29" /><label kind="guard" x="-93" y="-603">fr_in_between()</label><label kind="synchronisation" x="-110" y="-586">go_call_fr[civ_id]!</label><label kind="assignment" x="-212" y="-561">found_pair=false, calculate_path_civ2fr(), x=0</label><nail x="-59" y="-535" /></transition><transition><source ref="id28" /><target ref="id29" /><label kind="guard" x="-59" y="-272">!found_pair</label><label kind="assignment" x="-59" y="-255">x = 0</label></transition><transition><source ref="id29" /><target ref="id27" /><label kind="guard" x="-280" y="-340">x &gt;= STEP_TIME</label><label kind="assignment" x="-272" y="-323">moveDrone()</label><nail x="-289" y="-297" /></transition><transition><source ref="id27" /><target ref="id28" /><label kind="assignment" x="-306" y="-187">checkPosition()</label></transition><transition><source ref="id26" /><target ref="id28" /><label kind="synchronisation" x="-51" y="-127">Initialized?</label><label kind="assignment" x="-51" y="-102">position = drones_positions[id]</label></transition></template><template><name>FirstResponder</name><parameter>const firstResponder_t id</parameter><declaration>position_t position;
+int needy_id;
+int civ_id;
+bool isNextToNeedy = false;
+const int local_Tfr = Tfrs[id];
+int summoners_queue[CIVILIAN_NUMBER];
+int waiting = 0;
+int last_move=0;
+clock x;
+
+void enterGrid(){
+    int i;
+    position.row = firstResponder_positions[id].row;
+    position.col = firstResponder_positions[id].col;
+
+    for(i=0;i&lt;CIVILIAN_NUMBER;i++){
+        summoners_queue[i] = -1;    
+    }
+    
+}
+
+
+//Check FR's own position and set booleans according to the surroundings
+void checkPosition(){
+    int start_row, start_col;
+    int end_row, end_col;
+    bool break = false;
+    int i = 0;
+    int j = 0;
+    int k = 0;
+    grid[position.row][position.col]=FIRST_RESPONDER;
+
+    start_row = position.row &gt; 0 ? position.row-1 : position.row;
+    end_row = position.row &lt; GRID_HEIGHT-1 ? position.row+1 : position.row;
+
+    start_col = position.col &gt; 0 ? position.col-1 : position.col;
+    end_col = position.col &lt; GRID_WIDTH-1 ? position.col+1 : position.col;
+    
+    
+    for(i=start_row;i&lt;=end_row &amp;&amp; !break; i++){
+        for(j=start_col;j&lt;=end_col &amp;&amp; !break;j++){
+            if( !(i == position.row &amp;&amp; j == position.col) ){
+                
+                if(grid[i][j]==NEEDY_CIV){
+                    isNextToNeedy = true;
+                    grid[i][j]=RESCUING;
+                    for(k = 0; k &lt; CIVILIAN_NUMBER; k++){
+                        if(civilians_positions[k].row == i &amp;&amp; civilians_positions[k].col == j &amp;&amp; civilians_positions[k].row !=-1){
+                            needy_id = k;
+                            
+                        }
+                    }
+                    break=true;
+                }
+                
+            }
+        }
+    }
+
+
+
+    //CanGoR = (position.col &lt; GRID_WIDTH-1) &amp;&amp; !isNextToNeedy &amp;&amp; grid[position.row][position.col + 1]==0;
+    //CanGoL = (position.col &gt; 0) &amp;&amp; !isNextToNeedy &amp;&amp; grid[position.row][position.col - 1]==0;
+    //CanGoUp = (position.row &gt; 0) &amp;&amp; !isNextToNeedy &amp;&amp; grid[position.row - 1][position.col]==0;
+    //CanGoD = (position.row &lt; GRID_HEIGHT-1) &amp;&amp; !isNextToNeedy &amp;&amp; grid[position.row + 1][position.col]==0;
+}
+
+bool CanGoRight(){
+    return ((position.col &lt; GRID_WIDTH-1) &amp;&amp; grid[position.row][position.col + 1]==0 &amp;&amp; last_move != L);
+}
+
+bool CanGoLeft(){
+    return ((position.col &gt; 0) &amp;&amp; grid[position.row][position.col - 1]==0 &amp;&amp; last_move != R);
+}
+
+bool CanGoUp(){
+    return ((position.row &gt; 0) &amp;&amp; grid[position.row - 1][position.col]==0 &amp;&amp; last_move != D);
+}
+
+bool CanGoDown(){
+    return ((position.row &lt; GRID_HEIGHT-1) &amp;&amp; grid[position.row + 1][position.col]==0 &amp;&amp; last_move != U);
+}
+
+bool CantMove(){
+    return (!(CanGoRight() || CanGoLeft() || CanGoUp() || CanGoDown()));
+}
+
+void setPosition(int row, int col){
+    position.row = row;
+    position.col = col;
+    firstResponder_positions[id].row = row;
+    firstResponder_positions[id].col = col;
+
+}
+
+void needyReached(){
+    setPosition(position.row, position.col);
+}
+
+void reachNeedy(){
+    grid[position.row][position.col] = 0;
+    setPosition(-1,-1);
+    position.row = civilians_positions[needy_id].row;
+    position.col = civilians_positions[needy_id].col;
+}
+
+void foundNeedy(){
+    grid[position.row][position.col] = 0;
+    setPosition(civilians_positions[needy_id].row, civilians_positions[needy_id].col);
+}
+
+
+void enqueue_summoner(int agent){
+    int i = CIVILIAN_NUMBER-1;
+    while(i&gt;=0 &amp;&amp; summoners_queue[i] == -1){
+        i--;
+    }
+    summoners_queue[i+1] = agent;
+}
+
+int dequeue_summoner(){
+    int a,i;
+    a = summoners_queue[0];
+    for (i=0;i&lt;CIVILIAN_NUMBER-1;i++){
+        summoners_queue[i]=summoners_queue[i+1];
+    }
+    summoners_queue[CIVILIAN_NUMBER-1] = -1;
+    waiting--;
+    return a;
+
+}
+
+
+
+void Move_Right(){
+
+    grid[position.row][position.col] = 0;
+    position.col++;
+    grid[position.row][position.col] = FIRST_RESPONDER;
+    firstResponder_positions[id].col++;
+    last_move = R;
+    
+}
+
+void Move_Left(){
+    grid[position.row][position.col] = 0;
+    position.col--;
+    grid[position.row][position.col] = FIRST_RESPONDER;
+    firstResponder_positions[id].col--;
+    last_move = L;
+}
+
+void Move_Up(){
+    grid[position.row][position.col] = 0;
+    position.row--;
+    grid[position.row][position.col] = FIRST_RESPONDER;
+    firstResponder_positions[id].row--;
+    last_move = U;
+}
+
+void Move_Down(){
+    grid[position.row][position.col] = 0;
+    position.row++;
+    grid[position.row][position.col] = FIRST_RESPONDER;
+    firstResponder_positions[id].row++;
+    last_move = D;
+}
+</declaration><location id="id38" x="-391" y="0" /><location id="id39" x="-153" y="0"><committed /></location><location id="id40" x="612" y="0"><label kind="invariant" x="552" y="17">x &lt;= STEP_TIME</label></location><location id="id41" x="450" y="-289"><label kind="invariant" x="399" y="-264">x &lt;= local_Tfr</label></location><location id="id42" x="450" y="0"><committed /></location><location id="id43" x="1164" y="0"><name x="1130" y="-34">Summoned</name><label kind="invariant" x="1062" y="34">x &lt;= (fr2needy_distances[civ_id])</label></location><location id="id44" x="901" y="0"><committed /></location><init ref="id38" /><transition><source ref="id43" /><target ref="id41" /><label kind="guard" x="629" y="-433">x &gt;= (fr2needy_distances[civ_id])</label><label kind="assignment" x="459" y="-399">x=0,
+needyReached()</label><nail x="1121" y="-30" /><nail x="1122" y="-408" /><nail x="450" y="-408" /></transition><transition><source ref="id40" /><target ref="id39" /><label kind="guard" x="161" y="501">CantMove() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="263" y="527">last_move = 0</label><nail x="612" y="527" /><nail x="-153" y="527" /></transition><transition><source ref="id43" /><target ref="id43" /><label kind="synchronisation" x="1291" y="-59">summon_fr[id]?</label><label kind="assignment" x="1291" y="-42">enqueue_summoner(summoner[id]),
+waiting++</label><nail x="1283" y="0" /><nail x="1283" y="-68" /></transition><transition><source ref="id39" /><target ref="id44" /><label kind="guard" x="314" y="569">waiting&gt;0</label><label kind="assignment" x="255" y="595">civ_id=dequeue_summoner(),
+needy_id=go_save[civ_id]</label><nail x="-178" y="34" /><nail x="-178" y="586" /><nail x="901" y="586" /></transition><transition><source ref="id41" /><target ref="id41" /><label kind="synchronisation" x="620" y="-298">summon_fr[id]?</label><label kind="assignment" x="620" y="-281">enqueue_summoner(summoner[id]),
+waiting++</label><nail x="612" y="-247" /><nail x="612" y="-289" /></transition><transition><source ref="id41" /><target ref="id39" /><label kind="guard" x="-17" y="-161">civilians_positions[needy_id].row == -1</label><label kind="assignment" x="-17" y="-127">isNextToNeedy = false</label><nail x="374" y="-136" /><nail x="-93" y="-136" /></transition><transition><source ref="id44" /><target ref="id43" /><label kind="synchronisation" x="926" y="-25">been_summoned[civ_id]!</label><label kind="assignment" x="926" y="8">x = 0,
+reachNeedy()</label></transition><transition><source ref="id40" /><target ref="id44" /><label kind="synchronisation" x="688" y="-17">summon_fr[id]?</label><label kind="assignment" x="688" y="0">civ_id=summoner[id],
+needy_id=go_save[civ_id]</label></transition><transition><source ref="id42" /><target ref="id40" /><label kind="guard" x="467" y="-17">!isNextToNeedy</label><label kind="assignment" x="476" y="0">x = 0</label></transition><transition><source ref="id40" /><target ref="id39" /><label kind="guard" x="161" y="408">CanGoUp() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="161" y="433">Move_Up()</label><nail x="612" y="425" /><nail x="-153" y="425" /></transition><transition><source ref="id40" /><target ref="id39" /><label kind="guard" x="161" y="314">CanGoDown() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="161" y="340">Move_Down()</label><nail x="612" y="340" /><nail x="-153" y="340" /></transition><transition><source ref="id40" /><target ref="id39" /><label kind="guard" x="230" y="204">CanGoLeft() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="229" y="221">Move_Left()</label><nail x="612" y="238" /><nail x="-153" y="238" /></transition><transition><source ref="id40" /><target ref="id39" /><label kind="guard" x="230" y="93">CanGoRight() &amp;&amp; x &gt;= STEP_TIME</label><label kind="assignment" x="229" y="110">Move_Right()</label><nail x="612" y="127" /><nail x="-153" y="127" /></transition><transition><source ref="id41" /><target ref="id39" /><label kind="guard" x="-59" y="-314">x &gt;= local_Tfr &amp;&amp; civilians_positions[needy_id].row !=-1</label><label kind="synchronisation" x="-59" y="-331">Civilian_Saved[needy_id]!</label><label kind="assignment" x="-59" y="-289">isNextToNeedy = false</label><nail x="-153" y="-289" /></transition><transition><source ref="id42" /><target ref="id41" /><label kind="guard" x="459" y="-136">isNextToNeedy</label><label kind="assignment" x="459" y="-119">x = 0,
+foundNeedy()</label></transition><transition><source ref="id39" /><target ref="id42" /><label kind="guard" x="280" y="0">waiting==0</label><label kind="assignment" x="263" y="-17">checkPosition()</label></transition><transition><source ref="id38" /><target ref="id39" /><label kind="synchronisation" x="-365" y="-25">Initialized?</label><label kind="assignment" x="-365" y="8">enterGrid()</label></transition></template><template><name>Initialize</name><declaration>void setCivilians(){
+    int i;
+
+    for(i=0; i&lt; CIVILIAN_NUMBER; i++){
+
+        grid[civilians_positions[i].row][civilians_positions[i].col] = CIVILIAN;
+
+    }
+
+    
+
+
+}
+
+void setFirstResponders(){
+
+    int i;
+    
+    for(i=0; i&lt; FIRST_RESPONDER_NUMBER; i++){
+
+        grid[firstResponder_positions[i].row][firstResponder_positions[i].col] = FIRST_RESPONDER;
+    }
+  
+
+}
+
+void Initialize(){
+    setFire();
+    setExits();
+    setDronesPath();
+}
+</declaration><location id="id62" x="-765" y="-671"><committed /></location><location id="id63" x="-493" y="-671" /><init ref="id62" /><transition><source ref="id62" /><target ref="id63" /><label kind="synchronisation" x="-688" y="-654">Initialized!</label><label kind="assignment" x="-705" y="-739">Initialize(),
+setCivilians(),
+setFirstResponders()</label></transition></template><system>// Place template instantiations here.
+Process = Initialize();
+// List one or more processes to be composed into a system.
+system Process,FirstResponder, Drone, Civilian;
+</system><queries><query><formula>E&lt;&gt; (global&lt;=100 and (rescued_civilians*100/CIVILIAN_NUMBER&gt;=10))</formula><comment /></query></queries></nta>
